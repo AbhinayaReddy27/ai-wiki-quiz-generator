@@ -1,0 +1,26 @@
+# Python venv
+backend/venv/
+venv/
+
+# Environment variables
+.env
+backend/.env
+
+# Python cache
+__pycache__/
+**/__pycache__/
+*.pyc
+
+# Database
+quiz.db
+backend/quiz.db
+
+# VS Code configs
+.vscode/
+
+# Node modules
+frontend/node_modules/
+backend/node_modules/
+
+# Logs
+*.log
