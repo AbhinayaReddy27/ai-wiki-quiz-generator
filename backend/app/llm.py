@@ -3,6 +3,7 @@ from typing import Dict, Any, List
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
+
 from .config import GOOGLE_API_KEY
 
 
@@ -10,111 +11,139 @@ class LLMNotConfiguredError(Exception):
     pass
 
 
+# ============================================================
+#  BUILD LLM CLIENT
+# ============================================================
 def _build_llm():
-    """
-    FIXED MODEL NAME:
-    Use the globally supported Gemini model:
-    - gemini-1.5-flash
-    (NO -latest, NO -pro)
-
-    Render uses an older Gemini backend that does NOT support -latest.
-    """
     if not GOOGLE_API_KEY:
         raise LLMNotConfiguredError(
-            "GOOGLE_API_KEY is not set. Please export your Gemini API key "
-            "as GOOGLE_API_KEY in the environment."
+            "GOOGLE_API_KEY is not set. Please export it in your Render environment."
         )
 
     return ChatGoogleGenerativeAI(
-        model="gemini-1.5-flash",   #  <-- FIXED HERE
+        model="gemini-1.5-flash",      # ⭐ stable and valid model
         api_key=GOOGLE_API_KEY,
+        temperature=0.3,
     )
 
 
+# ============================================================
+#  STRICT JSON-ONLY PROMPT (Fix #1)
+# ============================================================
 QUIZ_PROMPT = ChatPromptTemplate.from_template(
-    """You are an assistant that generates quizzes grounded STRICTLY in the provided article.
+    """
+You MUST return ONLY valid JSON. 
+NO explanation, NO markdown, NO text before or after the JSON.
 
-Article title: {title}
+### ARTICLE TITLE
+{title}
 
-Article content:
+### ARTICLE CONTENT
 {article_text}
 
-Generate a quiz with 5-10 multiple-choice questions based ONLY on the article.
-Return JSON with the following structure EXACTLY:
+### REQUIRED JSON FORMAT (RETURN ONLY THIS STRUCTURE)
 
 {
   "quiz": [
     {
-      "question": "Question text based only on the article",
-      "options": ["Option A", "Option B", "Option C", "Option D"],
-      "answer": "Exactly one of the options",
-      "difficulty": "easy" | "medium" | "hard",
-      "explanation": "Short explanation based on the article"
+      "question": "Question text",
+      "options": ["A", "B", "C", "D"],
+      "answer": "One of the options",
+      "difficulty": "easy | medium | hard",
+      "explanation": "One-line explanation"
     }
   ],
-  "related_topics": ["topic1", "topic2", "topic3"]
+  "related_topics": ["topic1", "topic2"]
 }
 
-STRICT RULES:
-- Use ONLY article facts
-- NO commentary
-- ONLY valid JSON output
+### RULES
+- Output MUST start with `{` and end with `}` — no other characters allowed.
+- DO NOT include ```json or code fences.
+- DO NOT include comments or extra keys.
+- Use ONLY facts from the article.
+- Provide 5–10 questions.
 """
 )
 
 
-def _extract_text(content: Any) -> str:
+# ============================================================
+#  CLEAN TEXT EXTRACTION FROM LLM RESPONSE
+# ============================================================
+def _extract_text_from_llm_content(content: Any) -> str:
+    """Gemini sometimes returns list parts instead of raw string."""
     if isinstance(content, str):
         return content
+
     if isinstance(content, list):
-        parts = []
-        for p in content:
-            if isinstance(p, dict) and "text" in p:
-                parts.append(p["text"])
+        parts: List[str] = []
+        for part in content:
+            if isinstance(part, dict) and "text" in part:
+                parts.append(part["text"])
             else:
-                parts.append(str(p))
+                parts.append(str(part))
         return "".join(parts)
+
     return str(content)
 
 
+# ============================================================
+#  FIND JSON INSIDE OUTPUT (Fix #2)
+# ============================================================
 def _extract_json(raw: str) -> str:
-    raw = raw.strip()
-    if "```" in raw:
-        a = raw.find("```")
-        b = raw.rfind("```")
-        raw = raw[a+3:b].lstrip("json").strip()
+    """
+    Robust JSON extractor:
+    - removes ```json fences
+    - finds FIRST '{' and LAST '}'
+    """
 
-    if "{" in raw and "}" in raw:
-        i = raw.find("{")
-        j = raw.rfind("}")
-        return raw[i:j+1]
+    cleaned = raw.strip()
 
-    # Fallback
-    if raw.startswith('"quiz"'):
-        return "{" + raw + "}"
+    # Remove code fences if present
+    cleaned = cleaned.replace("```json", "")
+    cleaned = cleaned.replace("```", "").strip()
 
-    return raw
+    # Find outer JSON object
+    start = cleaned.find("{")
+    end = cleaned.rfind("}")
+
+    if start == -1 or end == -1:
+        raise ValueError(f"No JSON object found in LLM output: {raw[:150]}")
+
+    return cleaned[start:end + 1]
 
 
-def generate_quiz_and_topics(data: Dict[str, Any]) -> Dict[str, Any]:
+# ============================================================
+#  MAIN FUNCTION — GENERATE QUIZ + RELATED TOPICS
+# ============================================================
+def generate_quiz_and_topics(article_data: Dict[str, Any]) -> Dict[str, Any]:
     llm = _build_llm()
+
     prompt = QUIZ_PROMPT.format_messages(
-        title=data["title"],
-        article_text=data["article_text"]
+        title=article_data["title"],
+        article_text=article_data["article_text"],
     )
 
+    # Call Gemini
     result = llm.invoke(prompt)
-    content = _extract_text(result.content)
-    json_text = _extract_json(content)
 
+    # Convert content to text
+    raw_output = _extract_text_from_llm_content(getattr(result, "content", result))
+
+    # Extract JSON only
+    json_text = _extract_json(raw_output)
+
+    # Parse JSON
     try:
         parsed = json.loads(json_text)
-    except Exception as e:
+    except json.JSONDecodeError as e:
         raise ValueError(
-            f"Invalid JSON from LLM: {e}. Raw: {content[:400]}"
+            f"LLM returned invalid JSON: {e}. Output: {raw_output[:300]}"
         )
 
+    # Validate keys
     if "quiz" not in parsed or "related_topics" not in parsed:
-        raise ValueError("Missing keys in JSON: 'quiz' or 'related_topics'")
+        raise ValueError(
+            f"Missing required keys 'quiz' or 'related_topics'. Output: {raw_output[:300]}"
+        )
 
     return parsed
