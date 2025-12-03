@@ -1,6 +1,7 @@
 // frontend/app.js
 
-const API_BASE = "http://127.0.0.1:8000";
+const API_BASE = "https://ai-wiki-quiz-generator-lvf4.onrender.com";
+
 
 // ----- DOM ELEMENTS -----
 const urlInput = document.getElementById("url-input");

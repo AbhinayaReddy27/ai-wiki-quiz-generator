@@ -1,5 +1,5 @@
 import json
-from typing import Dict, Any, List, Union
+from typing import Dict, Any, List
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
@@ -11,15 +11,22 @@ class LLMNotConfiguredError(Exception):
 
 
 def _build_llm():
+    """
+    Build the Gemini LLM client.
+
+    NOTE:
+    - We use the current recommended model name: "gemini-1.5-flash-latest".
+    - If Google changes model names again in the future, you can update the
+      `model=` argument here.
+    """
     if not GOOGLE_API_KEY:
         raise LLMNotConfiguredError(
             "GOOGLE_API_KEY is not set. Please export your Gemini API key "
             "as GOOGLE_API_KEY in the environment."
         )
 
-    # IMPORTANT: no "-latest" here
     return ChatGoogleGenerativeAI(
-        model="gemini-1.5-flash",
+        model="gemini-1.5-flash-latest",
         api_key=GOOGLE_API_KEY,
     )
 
@@ -101,7 +108,7 @@ def _extract_json_block(raw: str) -> str:
     if "{" in text and "}" in text:
         start = text.find("{")
         end = text.rfind("}")
-        text = text[start : end + 1]
+        text = text[start: end + 1]
 
     return text
 
