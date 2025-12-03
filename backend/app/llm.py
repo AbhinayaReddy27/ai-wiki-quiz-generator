@@ -15,9 +15,8 @@ def _build_llm():
     Build the Gemini LLM client.
 
     NOTE:
-    - We use the current recommended model name: "gemini-1.5-flash-latest".
-    - If Google changes model names again in the future, you can update the
-      `model=` argument here.
+    - Using 'gemini-pro', which is supported on the v1beta API used by
+      langchain_google_genai and works with generateContent.
     """
     if not GOOGLE_API_KEY:
         raise LLMNotConfiguredError(
@@ -26,7 +25,7 @@ def _build_llm():
         )
 
     return ChatGoogleGenerativeAI(
-        model="gemini-1.5-flash-latest",
+        model="gemini-pro",
         api_key=GOOGLE_API_KEY,
     )
 
@@ -42,18 +41,18 @@ Article content:
 Generate a quiz with 5-10 multiple-choice questions based ONLY on the article.
 Return JSON with the following structure EXACTLY:
 
-{{
+{
   "quiz": [
-    {{
+    {
       "question": "Question text based only on the article",
       "options": ["Option A", "Option B", "Option C", "Option D"],
       "answer": "Exactly one of the options (must match an element of options)",
       "difficulty": "easy" | "medium" | "hard",
       "explanation": "Short explanation grounded in the article"
-    }}
+    }
   ],
   "related_topics": ["topic1", "topic2", "topic3"]
-}}
+}
 
 STRICT rules:
 - Use ONLY facts mentioned or clearly implied in the article.
