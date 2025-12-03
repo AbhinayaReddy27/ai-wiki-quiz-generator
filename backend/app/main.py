@@ -63,7 +63,7 @@ def generate_quiz(payload: schemas.QuizCreate, db: Session = Depends(get_db)):
             detail="Could not extract article text from the URL.",
         )
 
-    summary = article_data.get("summary", "")
+    summary = article_data.get("summary", "") or ""
 
     # Very naive key entity extraction from summary (placeholder)
     key_entities = {
@@ -76,9 +76,16 @@ def generate_quiz(payload: schemas.QuizCreate, db: Session = Depends(get_db)):
     try:
         quiz_data = llm.generate_quiz_and_topics(article_data)
     except llm.LLMNotConfiguredError as e:
+        # direct config error message
         raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error generating quiz: {e}")
+        # Log full error on server for debugging
+        print("Error generating quiz from LLM:", repr(e))
+        # Cleaner message for frontend (no double 'Error generating quiz')
+        raise HTTPException(
+            status_code=500,
+            detail="Error generating quiz from LLM. Please try again.",
+        )
 
     quiz = quiz_data.get("quiz", [])
     related_topics = quiz_data.get("related_topics", [])
