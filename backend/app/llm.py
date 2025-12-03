@@ -7,17 +7,12 @@ from .config import GOOGLE_API_KEY
 
 
 class LLMNotConfiguredError(Exception):
-    """Raised when GOOGLE_API_KEY is missing."""
     pass
 
 
 def _build_llm():
     """
     Build the Gemini LLM client.
-
-    Using 'gemini-1.5-pro' because it is widely supported and stable.
-    If your account only supports 'gemini-pro', you can switch the
-    model name below.
     """
     if not GOOGLE_API_KEY:
         raise LLMNotConfiguredError(
@@ -25,63 +20,56 @@ def _build_llm():
             "as GOOGLE_API_KEY in the environment."
         )
 
+    # Use stable, supported Gemini model
     return ChatGoogleGenerativeAI(
-        model="gemini-1.5-pro",  # change to "gemini-pro" if needed
+        model="gemini-1.5-flash-latest",
         api_key=GOOGLE_API_KEY,
-        temperature=0.2,
-        max_output_tokens=2048,
     )
 
 
 QUIZ_PROMPT = ChatPromptTemplate.from_template(
-    """
-You are an assistant that generates multiple–choice quizzes.
-
-You MUST return a single valid JSON object and nothing else.
+    """You are an assistant that generates quizzes grounded STRICTLY in the provided article.
 
 Article title: {title}
 
-Article text:
+Article content:
 {article_text}
 
-Generate a quiz with 5–10 multiple–choice questions based ONLY on the article.
+Generate a quiz with 5-10 multiple-choice questions based ONLY on the article.
+Return JSON with the following structure EXACTLY:
 
-Return JSON with this structure EXACTLY:
-
-{
+{{
   "quiz": [
-    {
+    {{
       "question": "Question text based only on the article",
       "options": ["Option A", "Option B", "Option C", "Option D"],
       "answer": "Exactly one of the options (must match an element of options)",
       "difficulty": "easy" | "medium" | "hard",
       "explanation": "Short explanation grounded in the article"
-    }
+    }}
   ],
-  "related_topics": [
-    "topic1",
-    "topic2",
-    "topic3"
-  ]
-}
+  "related_topics": ["topic1", "topic2", "topic3"]
+}}
 
-Rules:
+STRICT rules:
 - Use ONLY facts mentioned or clearly implied in the article.
 - Make options plausible and non-trivial.
 - Vary difficulty across questions.
-- DO NOT talk about APIs, models, errors, or quiz generation.
-- DO NOT add any text before or after the JSON.
-- DO NOT wrap JSON in ```json fences.
+- DO NOT talk about APIs, models, errors, backend, or quiz generation failures.
+- DO NOT explain that something went wrong.
+- Ask questions ONLY about the article content.
+- Output ONLY valid JSON. No backticks, no code fences, no extra commentary.
 """
 )
 
 
 def _extract_text_from_llm_content(content: Any) -> str:
-    """Handle different shapes of result.content from LangChain."""
+    """Handle different possible shapes of result.content from LangChain."""
+    # Already a plain string
     if isinstance(content, str):
         return content
 
-    # Sometimes it's a list of { "type": "text", "text": "..." }
+    # Sometimes it's a list of parts with {"type": "text", "text": "..."}
     if isinstance(content, list):
         parts: List[str] = []
         for part in content:
@@ -97,62 +85,62 @@ def _extract_text_from_llm_content(content: Any) -> str:
 
 def _extract_json_block(raw: str) -> str:
     """
-    Try to strip any extra text and keep only the JSON object:
-
-    - Remove ```json ... ``` fences if they exist.
+    Gemini sometimes adds extra text. We try to keep only the JSON object:
+    - Strip code fences ```json ... ```
     - Take substring from first '{' to last '}'.
+    - If we only see `"quiz": ...` without outer braces, wrap it.
     """
     text = raw.strip()
 
-    # Strip ```json ... ``` fences
+    # Strip ```json ... ```
     if "```" in text:
-        text = text.replace("```json", "").replace("```", "").strip()
+        first = text.find("```")
+        last = text.rfind("```")
+        inner = text[first + 3:last]  # remove ```
+        # Remove possible "json" after opening ```
+        inner = inner.lstrip("json").strip()
+        text = inner
 
-    # If there are braces, keep only outermost JSON object
+    # If there's extra text, keep only the outermost JSON object
     if "{" in text and "}" in text:
         start = text.find("{")
-        end = text.rfind("}") + 1
-        text = text[start:end]
+        end = text.rfind("}")
+        text = text[start : end + 1]
+    else:
+        # No braces, but maybe we got only `"quiz": ...` etc.
+        stripped = text.lstrip()
+        if stripped.startswith('"quiz"') or stripped.startswith("'quiz'"):
+            text = "{" + text + "}"
 
     return text
 
 
 def generate_quiz_and_topics(data: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Call Gemini via LangChain to generate quiz questions and related topics.
-
-    Returns a dict with keys:
-    - "quiz": list[dict]
-    - "related_topics": list[str]
-    """
-    llm = _build_llm()
-
+    """Call Gemini via LangChain to generate quiz questions and related topics."""
+    llm_client = _build_llm()
     prompt = QUIZ_PROMPT.format_messages(
         title=data["title"],
         article_text=data["article_text"],
     )
-
-    result = llm.invoke(prompt)
+    result = llm_client.invoke(prompt)
 
     raw_content = getattr(result, "content", result)
     content_str = _extract_text_from_llm_content(raw_content)
     json_candidate = _extract_json_block(content_str)
 
-    # Try to parse JSON
     try:
         parsed = json.loads(json_candidate)
     except json.JSONDecodeError as e:
-        # We raise a plain ValueError; main.py will turn it into a clean HTTPException
+        # Surface as clear error so FastAPI can show it
         raise ValueError(
             f"LLM did not return valid JSON: {e}. "
-            f"Raw (first 200 chars): {content_str[:200]!r}"
+            f"Raw output (first 400 chars): {content_str[:400]}"
         )
 
-    # Basic shape validation
-    if not isinstance(parsed, dict):
-        raise ValueError("LLM JSON root is not an object.")
-
     if "quiz" not in parsed or "related_topics" not in parsed:
-        raise ValueError("LLM JSON is missing required keys: 'quiz' and 'related_topics'.")
+        raise ValueError(
+            f"LLM JSON is missing required keys: 'quiz' and 'related_topics'. "
+            f"Parsed keys: {list(parsed.keys())}"
+        )
 
     return parsed
