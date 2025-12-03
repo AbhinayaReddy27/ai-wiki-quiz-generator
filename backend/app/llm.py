@@ -22,7 +22,7 @@ def _build_llm():
         api_key=GOOGLE_API_KEY,
         temperature=0.2,
         max_output_tokens=2048,
-        stop=["```", "</json>"]
+        stop=["```", "</json>"],
     )
 
 
@@ -60,7 +60,7 @@ def _extract_text_from_llm_content(content: Any) -> str:
     if isinstance(content, str):
         return content
     if isinstance(content, list):
-        parts = []
+        parts: List[str] = []
         for part in content:
             if isinstance(part, dict) and "text" in part:
                 parts.append(part["text"])
@@ -69,14 +69,14 @@ def _extract_text_from_llm_content(content: Any) -> str:
 
 
 def _safe_json_extract(raw: str) -> str:
-    """Extracts the first valid JSON object from raw text."""
+    """Extract the first JSON object from the raw model output."""
     text = raw.strip()
 
-    # Remove code fences
+    # Remove code fences if any
     if "```" in text:
         text = text.replace("```json", "").replace("```", "").strip()
 
-    # Extract from first { to last }
+    # Keep from first { to last }
     if "{" in text and "}" in text:
         start = text.find("{")
         end = text.rfind("}") + 1
@@ -90,7 +90,7 @@ def generate_quiz_and_topics(data: Dict[str, Any]) -> Dict[str, Any]:
 
     prompt = QUIZ_PROMPT.format_messages(
         title=data["title"],
-        article_text=data["article_text"]
+        article_text=data["article_text"],
     )
 
     result = llm.invoke(prompt)
@@ -104,7 +104,6 @@ def generate_quiz_and_topics(data: Dict[str, Any]) -> Dict[str, Any]:
     except Exception:
         raise ValueError(f"Gemini returned invalid JSON:\n\n{content_str[:500]}")
 
-    # Validate required keys
     if "quiz" not in parsed or "related_topics" not in parsed:
         raise ValueError("Invalid JSON: missing quiz or related_topics")
 
