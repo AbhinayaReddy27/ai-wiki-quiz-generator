@@ -12,7 +12,12 @@ class LLMNotConfiguredError(Exception):
 
 def _build_llm():
     """
-    Build the Gemini LLM client.
+    FIXED MODEL NAME:
+    Use the globally supported Gemini model:
+    - gemini-1.5-flash
+    (NO -latest, NO -pro)
+
+    Render uses an older Gemini backend that does NOT support -latest.
     """
     if not GOOGLE_API_KEY:
         raise LLMNotConfiguredError(
@@ -20,9 +25,8 @@ def _build_llm():
             "as GOOGLE_API_KEY in the environment."
         )
 
-    # Use stable, supported Gemini model
     return ChatGoogleGenerativeAI(
-        model="gemini-1.5-flash-latest",
+        model="gemini-1.5-flash",   #  <-- FIXED HERE
         api_key=GOOGLE_API_KEY,
     )
 
@@ -38,109 +42,79 @@ Article content:
 Generate a quiz with 5-10 multiple-choice questions based ONLY on the article.
 Return JSON with the following structure EXACTLY:
 
-{{
+{
   "quiz": [
-    {{
+    {
       "question": "Question text based only on the article",
       "options": ["Option A", "Option B", "Option C", "Option D"],
-      "answer": "Exactly one of the options (must match an element of options)",
+      "answer": "Exactly one of the options",
       "difficulty": "easy" | "medium" | "hard",
-      "explanation": "Short explanation grounded in the article"
-    }}
+      "explanation": "Short explanation based on the article"
+    }
   ],
   "related_topics": ["topic1", "topic2", "topic3"]
-}}
+}
 
-STRICT rules:
-- Use ONLY facts mentioned or clearly implied in the article.
-- Make options plausible and non-trivial.
-- Vary difficulty across questions.
-- DO NOT talk about APIs, models, errors, backend, or quiz generation failures.
-- DO NOT explain that something went wrong.
-- Ask questions ONLY about the article content.
-- Output ONLY valid JSON. No backticks, no code fences, no extra commentary.
+STRICT RULES:
+- Use ONLY article facts
+- NO commentary
+- ONLY valid JSON output
 """
 )
 
 
-def _extract_text_from_llm_content(content: Any) -> str:
-    """Handle different possible shapes of result.content from LangChain."""
-    # Already a plain string
+def _extract_text(content: Any) -> str:
     if isinstance(content, str):
         return content
-
-    # Sometimes it's a list of parts with {"type": "text", "text": "..."}
     if isinstance(content, list):
-        parts: List[str] = []
-        for part in content:
-            if isinstance(part, dict) and "text" in part:
-                parts.append(part["text"])
+        parts = []
+        for p in content:
+            if isinstance(p, dict) and "text" in p:
+                parts.append(p["text"])
             else:
-                parts.append(str(part))
+                parts.append(str(p))
         return "".join(parts)
-
-    # Fallback
     return str(content)
 
 
-def _extract_json_block(raw: str) -> str:
-    """
-    Gemini sometimes adds extra text. We try to keep only the JSON object:
-    - Strip code fences ```json ... ```
-    - Take substring from first '{' to last '}'.
-    - If we only see `"quiz": ...` without outer braces, wrap it.
-    """
-    text = raw.strip()
+def _extract_json(raw: str) -> str:
+    raw = raw.strip()
+    if "```" in raw:
+        a = raw.find("```")
+        b = raw.rfind("```")
+        raw = raw[a+3:b].lstrip("json").strip()
 
-    # Strip ```json ... ```
-    if "```" in text:
-        first = text.find("```")
-        last = text.rfind("```")
-        inner = text[first + 3:last]  # remove ```
-        # Remove possible "json" after opening ```
-        inner = inner.lstrip("json").strip()
-        text = inner
+    if "{" in raw and "}" in raw:
+        i = raw.find("{")
+        j = raw.rfind("}")
+        return raw[i:j+1]
 
-    # If there's extra text, keep only the outermost JSON object
-    if "{" in text and "}" in text:
-        start = text.find("{")
-        end = text.rfind("}")
-        text = text[start : end + 1]
-    else:
-        # No braces, but maybe we got only `"quiz": ...` etc.
-        stripped = text.lstrip()
-        if stripped.startswith('"quiz"') or stripped.startswith("'quiz'"):
-            text = "{" + text + "}"
+    # Fallback
+    if raw.startswith('"quiz"'):
+        return "{" + raw + "}"
 
-    return text
+    return raw
 
 
 def generate_quiz_and_topics(data: Dict[str, Any]) -> Dict[str, Any]:
-    """Call Gemini via LangChain to generate quiz questions and related topics."""
-    llm_client = _build_llm()
+    llm = _build_llm()
     prompt = QUIZ_PROMPT.format_messages(
         title=data["title"],
-        article_text=data["article_text"],
+        article_text=data["article_text"]
     )
-    result = llm_client.invoke(prompt)
 
-    raw_content = getattr(result, "content", result)
-    content_str = _extract_text_from_llm_content(raw_content)
-    json_candidate = _extract_json_block(content_str)
+    result = llm.invoke(prompt)
+    content = _extract_text(result.content)
+    json_text = _extract_json(content)
 
     try:
-        parsed = json.loads(json_candidate)
-    except json.JSONDecodeError as e:
-        # Surface as clear error so FastAPI can show it
+        parsed = json.loads(json_text)
+    except Exception as e:
         raise ValueError(
-            f"LLM did not return valid JSON: {e}. "
-            f"Raw output (first 400 chars): {content_str[:400]}"
+            f"Invalid JSON from LLM: {e}. Raw: {content[:400]}"
         )
 
     if "quiz" not in parsed or "related_topics" not in parsed:
-        raise ValueError(
-            f"LLM JSON is missing required keys: 'quiz' and 'related_topics'. "
-            f"Parsed keys: {list(parsed.keys())}"
-        )
+        raise ValueError("Missing keys in JSON: 'quiz' or 'related_topics'")
 
     return parsed
