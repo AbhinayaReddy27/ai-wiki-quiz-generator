@@ -46,13 +46,22 @@ export default function GeneratePage() {
         ...MOCK_QUIZ,
         title: decodedTitle,
         url: values.url,
-        // If it's not Turing, use more generic but varied mock summaries
         summary: decodedTitle === "Alan Turing" 
           ? MOCK_QUIZ.summary 
           : `This article discusses ${decodedTitle}, a significant subject in its field. The content covers historical context, key developments, and the lasting impact of ${decodedTitle} on modern society and academic study.`,
         entities: decodedTitle === "Alan Turing" 
           ? MOCK_QUIZ.entities 
           : [decodedTitle, "Historical Context", "Major Impact", "Future Research", "Key figures"],
+        // Generate dynamic questions based on the title
+        questions: decodedTitle === "Alan Turing" 
+          ? MOCK_QUIZ.questions 
+          : MOCK_QUIZ.questions.map((q, i) => ({
+              ...q,
+              question: q.question.replace(/Turing|Bletchley Park|Enigma|Alan Turing/g, decodedTitle),
+              options: q.options.map(opt => opt.replace(/Turing|Bletchley Park|Enigma|Alan Turing/g, decodedTitle)),
+              correct: q.correct.replace(/Turing|Bletchley Park|Enigma|Alan Turing/g, decodedTitle),
+              explanation: q.explanation.replace(/Turing|Bletchley Park|Enigma|Alan Turing/g, decodedTitle)
+            }))
       };
 
       setQuizData(dynamicQuiz);
