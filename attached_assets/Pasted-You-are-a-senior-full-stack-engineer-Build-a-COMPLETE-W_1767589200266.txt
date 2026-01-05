@@ -1,0 +1,109 @@
+You are a senior full-stack engineer.
+
+Build a COMPLETE, WORKING project called
+“AI Wiki Quiz Generator” using ONLY the following stack:
+
+BACKEND (MANDATORY):
+- Python FastAPI (NO Node.js anywhere)
+- BeautifulSoup for Wikipedia HTML scraping (NO Wikipedia API)
+- LangChain + Gemini (free tier)
+- Proper CORS handling
+- Environment variable for GEMINI_API_KEY
+- Clean error handling (invalid URL, scraping failure, missing API key)
+- Return STRICT JSON (no markdown)
+
+FRONTEND:
+- React (Vite)
+- Clean, minimal, professional UI
+- Card-based layout
+- Tabs (Generate Quiz | Past Quizzes)
+- Modal for quiz details
+- No raw JSON shown to users
+
+DATABASE:
+- SQLite (acceptable for demo) OR PostgreSQL
+- Store:
+  - article URL
+  - title
+  - summary
+  - sections
+  - entities
+  - quiz questions
+  - related topics
+  - timestamp
+- History tab must read from DB
+
+FUNCTIONAL REQUIREMENTS:
+1) Tab 1 – Generate Quiz
+   - Input: Wikipedia article URL
+   - Button: “Generate Quiz”
+   - Backend flow:
+     a) Validate URL (must be wikipedia.org/wiki/)
+     b) Scrape HTML with BeautifulSoup
+     c) Extract title, summary, sections, clean text
+     d) Send content to Gemini via LangChain
+     e) Generate 5–8 quiz questions
+     f) Each question must have:
+        - question
+        - 4 options (A–D)
+        - correct answer
+        - difficulty (easy / medium / hard)
+        - short explanation grounded in article
+     g) Generate 6–10 related Wikipedia topics
+     h) Store everything in database
+   - Frontend display:
+     - Article title + summary card
+     - Entities shown as chips
+     - Quiz shown as cards
+     - “Show Answer” toggle
+     - Difficulty badge
+     - Related topics chips
+
+2) Tab 2 – Past Quizzes
+   - Table:
+     - ID
+     - Title
+     - URL
+     - Created date
+     - “View Details” button
+   - Clicking “View Details” opens a modal
+   - Modal reuses SAME quiz UI as Tab 1
+
+API ENDPOINTS (FastAPI):
+- POST /api/quiz/generate
+- GET /api/quiz/history
+- GET /api/quiz/{id}
+
+PROMPT ENGINEERING (IMPORTANT):
+- Use a strong system prompt that says:
+  “Use ONLY provided article content. Do NOT hallucinate.”
+- Force STRICT JSON output
+- No eval(), use json.loads()
+- Retry once if Gemini returns invalid JSON
+
+PROJECT STRUCTURE:
+- backend/
+  - app/main.py
+  - app/api/routes.py
+  - app/services/scraper.py
+  - app/services/quiz_llm.py
+  - app/models/
+  - app/schemas/
+  - requirements.txt
+  - .env.example
+- frontend/
+  - React with tabs, cards, modal
+- sample_data/
+  - urls.txt
+  - example_output.json
+- README.md with setup instructions
+
+QUALITY BAR:
+- Code must be clean, modular, commented
+- UI must look like a real product, not a demo
+- No placeholder logic
+- Must run without errors after adding GEMINI_API_KEY
+
+DELIVERABLE:
+Generate ALL code files needed so I can click “Run” in Replit and test with:
+https://en.wikipedia.org/wiki/Alan_Turing
