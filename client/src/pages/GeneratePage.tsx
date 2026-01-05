@@ -32,13 +32,33 @@ export default function GeneratePage() {
     setIsLoading(true);
     setQuizData(null); // Reset
 
-    // Simulate API call
+    // Extract a title from the URL for the mock data
+    const urlParts = values.url.split("/wiki/");
+    const rawTitle = urlParts.length > 1 ? urlParts[1].replace(/_/g, " ") : "Generated Article";
+    const decodedTitle = decodeURIComponent(rawTitle);
+
+    // Simulate API call with dynamic-ish mock data based on input
     setTimeout(() => {
       setIsLoading(false);
-      setQuizData(MOCK_QUIZ);
+      
+      // Update mock data to reflect the specific URL
+      const dynamicQuiz = {
+        ...MOCK_QUIZ,
+        title: decodedTitle,
+        url: values.url,
+        // If it's not Turing, use more generic but varied mock summaries
+        summary: decodedTitle === "Alan Turing" 
+          ? MOCK_QUIZ.summary 
+          : `This article discusses ${decodedTitle}, a significant subject in its field. The content covers historical context, key developments, and the lasting impact of ${decodedTitle} on modern society and academic study.`,
+        entities: decodedTitle === "Alan Turing" 
+          ? MOCK_QUIZ.entities 
+          : [decodedTitle, "Historical Context", "Major Impact", "Future Research", "Key figures"],
+      };
+
+      setQuizData(dynamicQuiz);
       toast({
         title: "Quiz Generated Successfully",
-        description: `Generated ${MOCK_QUIZ.questions.length} questions for "${MOCK_QUIZ.title}"`,
+        description: `Generated ${MOCK_QUIZ.questions.length} questions for "${decodedTitle}"`,
       });
     }, 2000);
   }
