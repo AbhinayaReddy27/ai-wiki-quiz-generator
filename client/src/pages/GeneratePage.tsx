@@ -52,16 +52,26 @@ export default function GeneratePage() {
         entities: decodedTitle === "Alan Turing" 
           ? MOCK_QUIZ.entities 
           : [decodedTitle, "Historical Context", "Major Impact", "Future Research", "Key figures"],
-        // Generate dynamic questions based on the title
+        // Generate dynamic questions based on the title and shuffle options
         questions: decodedTitle === "Alan Turing" 
           ? MOCK_QUIZ.questions 
-          : MOCK_QUIZ.questions.map((q, i) => ({
-              ...q,
-              question: q.question.replace(/Turing|Bletchley Park|Enigma|Alan Turing/g, decodedTitle),
-              options: q.options.map(opt => opt.replace(/Turing|Bletchley Park|Enigma|Alan Turing/g, decodedTitle)),
-              correct: q.correct.replace(/Turing|Bletchley Park|Enigma|Alan Turing/g, decodedTitle),
-              explanation: q.explanation.replace(/Turing|Bletchley Park|Enigma|Alan Turing/g, decodedTitle)
-            }))
+          : MOCK_QUIZ.questions.map((q, i) => {
+              const updatedQuestion = q.question.replace(/Turing|Bletchley Park|Enigma|Alan Turing/g, decodedTitle);
+              const updatedCorrect = q.correct.replace(/Turing|Bletchley Park|Enigma|Alan Turing/g, decodedTitle);
+              const updatedOptions = q.options.map(opt => opt.replace(/Turing|Bletchley Park|Enigma|Alan Turing/g, decodedTitle));
+              const updatedExplanation = q.explanation.replace(/Turing|Bletchley Park|Enigma|Alan Turing/g, decodedTitle);
+              
+              // Shuffle options
+              const shuffledOptions = [...updatedOptions].sort(() => Math.random() - 0.5);
+              
+              return {
+                ...q,
+                question: updatedQuestion,
+                options: shuffledOptions,
+                correct: updatedCorrect,
+                explanation: updatedExplanation
+              };
+            })
       };
 
       setQuizData(dynamicQuiz);
