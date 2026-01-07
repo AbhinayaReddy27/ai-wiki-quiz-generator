@@ -80,19 +80,23 @@ app.use((req, res, next) => {
     await setupVite(httpServer, app);
   }
 
-  // ALWAYS serve the app on the port specified in the environment variable PORT
-  // Other ports are firewalled. Default to 5000 if not specified.
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
-  const port = parseInt(process.env.PORT || "5000", 10);
-  httpServer.listen(
-    {
-      port,
-      host: "0.0.0.0",
-      reusePort: true,
-    },
-    () => {
-      log(`serving on port ${port}`);
-    },
-  );
+  /**
+   * ✅ LOCAL DEV FIX (Windows-safe)
+   * - In Replit/production they want 0.0.0.0:5000.
+   * - On Windows local dev, binding to 0.0.0.0 with reusePort can throw ENOTSUP.
+   * - Also Vite client is configured to use port 5000, so backend should not compete.
+   */
+  const isProd = process.env.NODE_ENV === "production";
+
+  // Dev backend -> 3000 (avoids conflict with Vite on 5000)
+  // Prod backend -> PORT or 5000
+  const port = parseInt(process.env.PORT || (isProd ? "5000" : "3000"), 10);
+
+  // Dev bind -> localhost (Windows-safe)
+  // Prod bind -> 0.0.0.0 (Replit)
+  const host = isProd ? "0.0.0.0" : "127.0.0.1";
+
+  httpServer.listen(port, host, () => {
+    log(`serving on http://${host}:${port}`);
+  });
 })();
